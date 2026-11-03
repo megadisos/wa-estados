@@ -1,0 +1,76 @@
+# Estados automáticos de WhatsApp - Customania
+# Edita este archivo; no hace falta tocar el código.
+
+zona_horaria = "America/Bogota"
+
+sitio        = "https://customania.com.co"
+tienda_api   = "https://tienda.customania.com.co/wp-json/wc/store/v1/products"
+url_whatsapp = "https://customania.com.co/wa"
+
+# Cuántos estados de cada tipo por día (cada día distintos hasta agotar el catálogo)
+servicios_por_dia = 3
+productos_por_dia = 3
+
+# Productos cuya categoría, slug o título contenga alguna de estas palabras NO se publican
+excluir_productos = ["medalla", "trofeo"]
+# Servicios que no quieres publicar (slug de la URL, ej: "diseno-grafico")
+excluir_servicios = []
+
+# Productos nuevos: los que aparecen en la tienda tienen prioridad en los cupos de productos del día.
+# dias_prioridad_nuevos: cuántos días máximo esperan su turno. nuevos_al_iniciar: solo la primera vez que corre
+# esta versión, cuántos de los productos más recientes se toman como "nuevos".
+dias_prioridad_nuevos = 14
+nuevos_al_iniciar = 3
+
+# Pausas "humanas" en segundos [mínimo, máximo]
+pausa_entre_estados = [25, 70]
+pausa_entre_cuentas = [120, 300]
+# Espera aleatoria de 0 a N minutos antes de empezar (0 = a la hora exacta)
+jitter_inicio_min = 5
+
+# Seguridad: nunca publica fuera de esta ventana (evita posts de madrugada si el PC se enciende a deshoras)
+no_publicar_antes  = "04:00"
+no_publicar_despues = "20:30"
+
+# Promo de la semana (customania.com.co/promos): se publica un estado con su imagen TODOS los días.
+# Cuando la página cambia de promo, el estado cambia solo.
+[promo_semana]
+activa   = true
+pagina   = "https://customania.com.co/promos"
+posicion = "primero"   # "primero" o "ultimo" entre los estados del día
+# Si la detección automática falla o quieres otra, pon aquí el slug o la URL, ej: "mugs-personalizados".
+# Déjalo vacío ("") para detectarla sola. OJO: si la fijas, cámbiala o vacíala la semana siguiente.
+forzar   = ""
+
+# Alertas opcionales por Telegram (déjalo vacío si no lo quieres)
+[notificaciones]
+telegram_token   = ""
+telegram_chat_id = ""
+
+# Texto de cada estado. Las líneas que usen un dato vacío se omiten solas.
+# Datos disponibles: {titulo} {descripcion} {precio} {url} {wa}  ({wa} = enlace de WhatsApp, ya no se usa por defecto)
+[textos]
+servicio = """{titulo}
+{descripcion}
+{url}"""
+producto = """{titulo}
+{precio}
+Comprar: {url}"""
+promo = """PROMO DE LA SEMANA
+{titulo}
+Pídela aquí: {url}"""
+
+# ---- Cuentas ----
+# Cada cuenta tiene su propio perfil de navegador (aquí queda guardada la sesión de WhatsApp Web).
+# Opcional por cuenta: proxy = "http://usuario:clave@host:puerto", textos propios con
+# [cuentas.textos] servicio = "..." producto = "..." promo = "..."
+
+[[cuentas]]
+nombre = "customania"
+perfil = "datos/perfiles/customania"
+activa = true
+
+[[cuentas]]
+nombre = "personal"
+perfil = "datos/perfiles/personal"
+activa = true

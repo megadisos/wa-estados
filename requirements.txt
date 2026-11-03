@@ -1,0 +1,6 @@
+playwright>=1.44
+requests>=2.31
+beautifulsoup4>=4.12
+Pillow>=10.0
+tomli>=2.0; python_version < "3.11"
+tzdata; sys_platform == "win32"

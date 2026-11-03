@@ -1,0 +1,20 @@
+# Entorno virtual de Python
+.venv/
+
+# Caché de Python y de pruebas
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Generado al ejecutar. datos/perfiles guarda las sesiones de WhatsApp Web: nunca debe subirse.
+datos/
+
+# Variables de entorno locales
+.env
+
+# Editores y sistema operativo
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
