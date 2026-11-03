@@ -114,6 +114,9 @@ def _item_producto_api(p, cfg):
     if not imagenes or not p.get("is_in_stock", True):
         return None
     cats = p.get("categories") or []
+    excl_cat = {c.lower() for c in cfg.get("excluir_categorias", [])}
+    if any(c.get("slug", "").lower() in excl_cat for c in cats):
+        return None
     texto = " ".join([c.get("name", "") + " " + c.get("slug", "") for c in cats] + [p.get("name", ""), p.get("slug", "")])
     if _excluido(texto, cfg):
         return None
@@ -138,7 +141,21 @@ def _item_producto_api(p, cfg):
         "precio": precio,
         "url": f"{cfg['sitio'].rstrip('/')}/store/{slug}",
         "imagen": imagenes[0].get("src", ""),
+        "categorias": [html.unescape(c.get("name", "")) for c in cats],
     }
+
+
+def categorias(cfg):
+    """Todas las categorías de la tienda con cuántos productos tiene cada una (incluye las excluidas)."""
+    cats = {}
+    for p in _productos_api(cfg):
+        for c in p.get("categories") or []:
+            slug = c.get("slug", "")
+            if not slug:
+                continue
+            d = cats.setdefault(slug, {"slug": slug, "nombre": html.unescape(c.get("name", slug)), "productos": 0})
+            d["productos"] += 1
+    return sorted(cats.values(), key=lambda c: c["nombre"].lower())
 
 
 def _productos(cfg):

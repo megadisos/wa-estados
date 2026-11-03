@@ -13,6 +13,9 @@ productos_por_dia = 3
 
 # Productos cuya categoría, slug o título contenga alguna de estas palabras NO se publican
 excluir_productos = ["medalla", "trofeo"]
+# Categorías de la tienda que NO se publican (slug exacto de la categoría, ej: "gorras").
+# También se pueden marcar desde la app (pantalla Ajustes > Categorías).
+excluir_categorias = []
 # Servicios que no quieres publicar (slug de la URL, ej: "diseno-grafico")
 excluir_servicios = []
 
@@ -41,6 +44,10 @@ posicion = "primero"   # "primero" o "ultimo" entre los estados del día
 # Si la detección automática falla o quieres otra, pon aquí el slug o la URL, ej: "mugs-personalizados".
 # Déjalo vacío ("") para detectarla sola. OJO: si la fijas, cámbiala o vacíala la semana siguiente.
 forzar   = ""
+
+# Agente para la app del celular (agente.py). La clave está en datos/agente_clave.txt
+[agente]
+puerto = 8770
 
 # Alertas opcionales por Telegram (déjalo vacío si no lo quieres)
 [notificaciones]

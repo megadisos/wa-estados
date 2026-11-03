@@ -80,5 +80,44 @@ El riesgo con 7 estados al día es bajo pero no es cero. Lo que más ayuda:
 - Logs: datos\logs\estados.log
 - Un estado "incierto" (se dio clic en Enviar pero no se pudo confirmar) NO se reintenta solo, para no duplicar.
 
+## App del celular (controlarlo desde cualquier lugar)
+Con la app "Estados WA" puedes, desde el celular: ver si está publicando, ejecutar ahora, detener, pausar las
+publicaciones programadas (indefinido, solo hoy o hasta una fecha), ver y cambiar qué servicios y productos salen en
+la próxima ejecución, ver el historial de lo publicado, seguir el log en vivo y cambiar ajustes (cantidades por día,
+cuentas, promo, categorías y palabras excluidas, servicios excluidos, horario, pausas y textos).
+
+El script sigue corriendo en el PC; la app solo lo controla. Para llegar al PC desde la calle se usa Tailscale
+(gratis), que conecta el celular y el PC como si estuvieran en la misma red, cifrado y sin abrir puertos del router.
+
+### 1. Tailscale (una vez)
+1. En el PC: instala Tailscale desde https://tailscale.com/download/windows e inicia sesión (con Google, por ejemplo).
+2. En el celular: instala Tailscale desde la Play Store e inicia sesión con LA MISMA cuenta. Déjalo activado.
+3. En el PC, en el ícono de Tailscale (junto al reloj), copia la IP que empieza por 100. (ej: 100.101.102.103).
+   Tip: en https://login.tailscale.com/admin/machines desactiva "Key expiry" del PC para que no se desconecte cada 180 días.
+
+### 2. Agente en el PC (una vez)
+Doble clic en `activar_agente.bat` y acepta el permiso de administrador (solo abre el puerto 8770 para Tailscale).
+Queda corriendo en segundo plano y arranca solo cada vez que inicias sesión en Windows.
+Al final muestra la **Dirección** (http://100.x.x.x:8770) y la **Clave**. Guárdalas; la clave también está en
+`datos\agente_clave.txt`. Para probarlo en una ventana visible en vez de en segundo plano: `agente.bat`.
+
+### 3. Instalar la app
+1. Desde el celular abre https://github.com/megadisos/wa-estados/releases y descarga `estados-wa.apk`
+   (en "App Android"). Android pedirá permitir instalar apps de esa fuente: acéptalo.
+2. Abre la app, escribe la dirección y la clave del paso 2 y toca Conectar.
+
+Notas:
+- "Pausar programación" detiene la tarea de las 5:00 a.m. sin borrarla. "Ejecutar ahora" funciona aunque esté en pausa.
+- "Detener" espera a que termine el estado que está subiendo; "Forzar" corta de inmediato (puede quedar uno a medias).
+- En "Próxima" puedes crear el plan del día siguiente por adelantado y cambiar, quitar, ordenar o agregar elementos.
+  La promo de la semana no se elige: se detecta sola el día de la publicación.
+- Los ajustes hechos desde la app se guardan en `datos\ajustes_app.json` y se aplican encima de config.toml
+  (que no se modifica). "Volver a config.toml" en Ajustes los borra.
+- Historial: `datos\historial.jsonl` (empieza a llenarse con esta versión).
+- Actualizaciones de la app: cada versión nueva aparece en la misma página de Releases. Si Android dice que la app
+  "no se puede actualizar", desinstala la anterior e instala la nueva (vuelve a pedir dirección y clave). Para que
+  se instale encima sin desinstalar, crea en GitHub los secretos ANDROID_KEYSTORE_BASE64 y ANDROID_KEYSTORE_PASSWORD
+  (ver app/README.md).
+
 ## Linux/VPS (opcional)
 Siguen incluidos instalar.sh, login.sh y activar_timer.sh (por defecto también 05:00 y respaldo 06:30).
