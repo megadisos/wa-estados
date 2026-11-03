@@ -258,7 +258,11 @@ class _PantallaInicioState extends State<PantallaInicio> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('${c['publicados_hoy']} / ${e['hoy']?['planificados'] ?? 0}', style: t.titleMedium),
+                    Text(
+                        (e['hoy']?['planificados'] ?? 0) == 0
+                            ? 'Sin plan aún'
+                            : '${c['publicados_hoy']} / ${e['hoy']?['planificados']}',
+                        style: t.titleMedium),
                     if ((c['inciertos_hoy'] ?? 0) > 0)
                       Text('${c['inciertos_hoy']} sin confirmar', style: TextStyle(color: cs.error, fontSize: 12)),
                   ],
