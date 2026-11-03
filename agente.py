@@ -146,7 +146,7 @@ class Agente:
         info["deteniendo"] = vivo and DETENER.exists()
         return info
 
-    def ejecutar(self, real=True, cuenta=None, ignorar_horario=False, sin_espera=True):
+    def ejecutar(self, real=True, cuenta=None, ignorar_horario=False, sin_espera=False):
         with self.mutex:
             if self.ejecucion()["en_curso"]:
                 raise ErrorApi("Ya hay una ejecución en curso", 409)
@@ -568,7 +568,7 @@ def crear_manejador(agente, clave_api):
                         real=bool(b.get("real", True)),
                         cuenta=b.get("cuenta") or None,
                         ignorar_horario=bool(b.get("ignorar_horario", False)),
-                        sin_espera=bool(b.get("sin_espera", True)),
+                        sin_espera=bool(b.get("sin_espera", False)),
                     ),
                     ("POST", "/api/detener"): lambda: agente.detener(forzar=bool(b.get("forzar", False))),
                     ("POST", "/api/pausa"): lambda: agente.pausar(bool(b.get("pausado", True)), b.get("hasta") or None),
