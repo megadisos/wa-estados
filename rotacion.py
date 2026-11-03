@@ -160,5 +160,44 @@ def plan_del_dia(estado, fecha, catalogo, cfg, rng=None):
     return dias[fecha]
 
 
+def cambiar_plan(estado, fecha, nuevo_orden):
+    """Reemplaza los servicios/productos del plan de `fecha` (lo usa la app para elegir qué sale).
+
+    - Los que se quitan vuelven al inicio de la cola de su ciclo (saldrán pronto otro día).
+    - Los que se agregan cuentan como usados en esta vuelta (no se repiten hasta la siguiente).
+    - La promo de la semana no se toca: se detecta sola el día de la publicación.
+    - No se puede quitar algo que ya se publicó en alguna cuenta.
+    """
+    dia = estado["dias"][fecha]
+    nuevo = list(dict.fromkeys(i for i in nuevo_orden if not i.startswith("promo:")))
+    viejo = [i for i in dia["orden"] if not i.startswith("promo:")]
+    publicados = {i for hechos in dia["publicado"].values() for i in hechos}
+    quitados = [i for i in viejo if i not in nuevo]
+    bloqueados = [i for i in quitados if i in publicados]
+    if bloqueados:
+        raise ValueError(f"Ya se publicaron y no se pueden quitar: {', '.join(bloqueados)}")
+    agregados = [i for i in nuevo if i not in viejo]
+    ciclos = estado.setdefault("ciclos", {})
+    for i in reversed(quitados):
+        c = ciclos.setdefault(i.split(":")[0], {"pendientes": [], "usados": [], "vueltas": 0})
+        if i in c["usados"]:
+            c["usados"].remove(i)
+        if i not in c["pendientes"]:
+            c["pendientes"].insert(0, i)
+        dia["items"].pop(i, None)
+    for i in agregados:
+        c = ciclos.setdefault(i.split(":")[0], {"pendientes": [], "usados": [], "vueltas": 0})
+        if i in c["pendientes"]:
+            c["pendientes"].remove(i)
+        if i not in c["usados"]:
+            c["usados"].append(i)
+    promos = [i for i in dia["orden"] if i.startswith("promo:")]
+    al_inicio = bool(promos) and dia["orden"][0] in promos
+    dia["orden"] = (promos if al_inicio else []) + nuevo + ([] if al_inicio else promos)
+    dia["nuevos"] = [i for i in dia.get("nuevos", []) if i in nuevo]
+    dia["editado"] = True
+    return dia
+
+
 def copia(estado):
     return copy.deepcopy(estado)
