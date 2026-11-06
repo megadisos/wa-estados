@@ -165,12 +165,13 @@ def cambiar_plan(estado, fecha, nuevo_orden):
 
     - Los que se quitan vuelven al inicio de la cola de su ciclo (saldrán pronto otro día).
     - Los que se agregan cuentan como usados en esta vuelta (no se repiten hasta la siguiente).
-    - La promo de la semana no se toca: se detecta sola el día de la publicación.
+    - La promo de la semana y los estados fijos no se tocan (se ponen solos el día de la publicación).
     - No se puede quitar algo que ya se publicó en alguna cuenta.
     """
     dia = estado["dias"][fecha]
-    nuevo = list(dict.fromkeys(i for i in nuevo_orden if not i.startswith("promo:")))
-    viejo = [i for i in dia["orden"] if not i.startswith("promo:")]
+    auto = ("promo:", "fijo:")  # promo de la semana y estados fijos: no se eligen a mano
+    nuevo = list(dict.fromkeys(i for i in nuevo_orden if not i.startswith(auto)))
+    viejo = [i for i in dia["orden"] if not i.startswith(auto)]
     publicados = {i for hechos in dia["publicado"].values() for i in hechos}
     quitados = [i for i in viejo if i not in nuevo]
     bloqueados = [i for i in quitados if i in publicados]
@@ -191,9 +192,13 @@ def cambiar_plan(estado, fecha, nuevo_orden):
             c["pendientes"].remove(i)
         if i not in c["usados"]:
             c["usados"].append(i)
-    promos = [i for i in dia["orden"] if i.startswith("promo:")]
-    al_inicio = bool(promos) and dia["orden"][0] in promos
-    dia["orden"] = (promos if al_inicio else []) + nuevo + ([] if al_inicio else promos)
+    inicio = []
+    for i in dia["orden"]:
+        if not i.startswith(auto):
+            break
+        inicio.append(i)
+    final = [i for i in dia["orden"] if i.startswith(auto) and i not in inicio]
+    dia["orden"] = inicio + nuevo + final
     dia["nuevos"] = [i for i in dia.get("nuevos", []) if i in nuevo]
     dia["editado"] = True
     return dia

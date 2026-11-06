@@ -25,5 +25,7 @@ def renderizar(plantilla, item, cfg):
 
 def caption(item, cuenta, cfg):
     propios = cuenta.get("textos", {})
+    if item.get("texto"):  # estados fijos traen su propio texto
+        return renderizar(item["texto"], item, cfg)
     plantilla = propios.get(item["tipo"]) or cfg["textos"].get(item["tipo"]) or POR_DEFECTO.get(item["tipo"], "{titulo}")
     return renderizar(plantilla, item, cfg)

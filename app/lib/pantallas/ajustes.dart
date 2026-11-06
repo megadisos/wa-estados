@@ -172,6 +172,40 @@ class _PantallaAjustesState extends State<PantallaAjustes> {
           }
         },
       ),
+      _titulo('Estados fijos (salen todos los días)'),
+      if ((a['fijos'] as List? ?? []).isEmpty)
+        const ListTile(subtitle: Text('No hay estados fijos en config.toml')),
+      for (final f in [for (final x in (a['fijos'] as List? ?? [])) Map<String, dynamic>.from(x)]) ...[
+        SwitchListTile(
+          secondary: Miniatura(f['imagen']?.toString() ?? '', tipo: 'fijo'),
+          title: Text(f['titulo']?.toString() ?? f['id'].toString()),
+          subtitle: Text(f['url']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
+          value: f['activo'] == true,
+          onChanged: (v) => _guardar({
+            'fijos': {
+              f['id']: {'activo': v}
+            }
+          }),
+        ),
+        ListTile(
+          contentPadding: const EdgeInsets.only(left: 88, right: 16),
+          title: const Text('Texto del estado'),
+          subtitle: Text((f['texto'] ?? '').toString(), maxLines: 3, overflow: TextOverflow.ellipsis),
+          trailing: const Icon(Icons.edit),
+          onTap: () async {
+            final v = await _pedirTexto(context, 'Texto de ${f['titulo']}', 'Datos: {titulo} {url} {wa}',
+                (f['texto'] ?? '').toString(),
+                lineas: 5);
+            if (v != null) {
+              await _guardar({
+                'fijos': {
+                  f['id']: {'texto': v}
+                }
+              });
+            }
+          },
+        ),
+      ],
       _titulo('Restricciones'),
       ListTile(
         leading: const Icon(Icons.category_outlined),

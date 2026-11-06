@@ -67,6 +67,7 @@ class _PrincipalState extends State<Principal> {
 
   @override
   Widget build(BuildContext context) {
+    Api.actual = widget.api;
     final paginas = [
       PantallaInicio(api: widget.api, irA: (i) => setState(() => _i = i)),
       PantallaPlan(api: widget.api),

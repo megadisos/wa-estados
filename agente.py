@@ -14,6 +14,7 @@ La clave se crea sola la primera vez en datos/agente_clave.txt. Se escribe en la
 del PC (con Tailscale: http://<IP de Tailscale del PC>:8770).
 """
 import argparse
+import copy
 import hmac
 import json
 import logging
@@ -31,6 +32,7 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 import catalogo
+import fijos
 import rotacion
 from util import (
     AJUSTES_APP,
@@ -315,6 +317,8 @@ class Agente:
 
     # ------------------------------------------------------------ plan
     def _resumen_plan(self, dia, fecha, cfg, cat=None):
+        dia = copy.deepcopy(dia)
+        fijos.agregar(dia, cfg)  # muestra los estados fijos aunque el plan se haya creado antes
         orden = []
         for id_ in dia["orden"]:
             it = dia["items"].get(id_)
@@ -374,10 +378,10 @@ class Agente:
         cfg = cargar_config()
         cat = self.catalogo()
         validos = set(cat["servicio"]) | set(cat["producto"])
-        malos = [i for i in ids if not i.startswith("promo:") and i not in validos]
+        malos = [i for i in ids if not i.startswith(fijos.AUTOMATICOS) and i not in validos]
         if malos:
             raise ErrorApi(f"No están en el catálogo (o están excluidos): {', '.join(malos)}")
-        if not [i for i in ids if not i.startswith("promo:")]:
+        if not [i for i in ids if not i.startswith(fijos.AUTOMATICOS)]:
             raise ErrorApi("El plan debe tener al menos un servicio o producto")
         with self._bloqueo():
             est = rotacion.cargar()
@@ -466,6 +470,7 @@ class Agente:
         "promo_semana": dict,
         "textos": dict,
         "cuentas_activas": dict,
+        "fijos": dict,
     }
 
     def ajustes(self):
@@ -474,6 +479,11 @@ class Agente:
         r["excluir_categorias"] = cfg.get("excluir_categorias", [])
         r["promo_semana"] = {k: cfg.get("promo_semana", {}).get(k) for k in ("activa", "posicion", "forzar")}
         r["cuentas_activas"] = {c["nombre"]: c.get("activa", True) for c in cfg.get("cuentas", [])}
+        r["fijos"] = [
+            {**{k: f.get(k) for k in ("id", "titulo", "url", "texto")}, "activo": f.get("activo", True),
+             "posicion": f.get("posicion", "despues_promo"), "imagen": fijos.item(f)["imagen"]}
+            for f in cfg.get("fijos", []) if f.get("id")
+        ]
         r["modificados_desde_app"] = sorted((leer_json(AJUSTES_APP, {}) or {}).keys())
         return r
 
@@ -507,6 +517,22 @@ class Agente:
                 v = {a: b for a, b in v.items() if a in ("activa", "posicion", "forzar")}
             if k == "textos":
                 v = {a: str(b) for a, b in v.items() if a in ("servicio", "producto", "promo")}
+            if k == "fijos":
+                existentes = {f.get("id") for f in cargar_config(ajustes=False).get("fijos", [])}
+                nuevo = dict(actuales.get(k, {}))
+                for id_, cambio in v.items():
+                    if id_ not in existentes or not isinstance(cambio, dict):
+                        raise ErrorApi(f"No existe el estado fijo '{id_}'")
+                    limpio = {}
+                    if "activo" in cambio:
+                        limpio["activo"] = bool(cambio["activo"])
+                    if "texto" in cambio:
+                        limpio["texto"] = str(cambio["texto"])
+                    if cambio.get("posicion") in ("primero", "despues_promo", "ultimo"):
+                        limpio["posicion"] = cambio["posicion"]
+                    nuevo[id_] = {**nuevo.get(id_, {}), **limpio}
+                actuales[k] = nuevo
+                continue
             if isinstance(v, dict) and isinstance(actuales.get(k), dict):
                 v = {**actuales[k], **v}
             actuales[k] = v
@@ -538,6 +564,19 @@ def crear_manejador(agente, clave_api):
             self.end_headers()
             self.wfile.write(cuerpo)
 
+        def _imagen_fija(self, id_):
+            f = next((f for f in cargar_config().get("fijos", []) if f.get("id") == id_), None)
+            archivo = fijos.ruta(f) if f else None
+            if not archivo or not archivo.is_file():
+                return self._responder(404, {"error": "No existe esa imagen"})
+            datos = archivo.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png" if archivo.suffix.lower() == ".png" else "image/jpeg")
+            self.send_header("Content-Length", str(len(datos)))
+            self.send_header("Cache-Control", "max-age=3600")
+            self.end_headers()
+            self.wfile.write(datos)
+
         def _cuerpo(self):
             n = int(self.headers.get("Content-Length") or 0)
             if not n:
@@ -561,6 +600,8 @@ def crear_manejador(agente, clave_api):
                     return self._responder(200, {"ok": True, "version": VERSION})
                 if not self._autorizado():
                     return self._responder(401, {"error": "Clave incorrecta"})
+                if metodo == "GET" and ruta == "/api/fijo":
+                    return self._imagen_fija(q.get("id", ""))
                 b = self._cuerpo() if metodo in ("POST", "PUT") else {}
                 rutas = {
                     ("GET", "/api/estado"): lambda: agente.estado(),

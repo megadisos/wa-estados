@@ -49,6 +49,20 @@ forzar   = ""
 [agente]
 puerto = 8770
 
+# Estados fijos: se publican TODOS los días con su propia imagen (no rotan). Puedes agregar más bloques [[fijos]].
+# imagen: ruta dentro de esta carpeta. posicion: "primero", "despues_promo" o "ultimo".
+# Desde la app (Ajustes > Estados fijos) se pueden activar/desactivar y cambiarles el texto.
+[[fijos]]
+id       = "publicitarios"
+titulo   = "Artículos publicitarios"
+imagen   = "fijos/articulos-publicitarios.jpg"
+url      = "https://customania.com.co/publicitarios/"
+activo   = true
+posicion = "despues_promo"
+texto    = """ARTÍCULOS PUBLICITARIOS
+Regalos corporativos con tu logo
+Cotiza aquí: {url}"""
+
 # Alertas opcionales por Telegram (déjalo vacío si no lo quieres)
 [notificaciones]
 telegram_token   = ""

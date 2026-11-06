@@ -144,12 +144,12 @@ def test_api_plan_crear_y_cambiar(api):
     codigo, plan = llamar("GET", "/api/plan?fecha=2099-01-01")
     assert codigo == 200 and plan["existe"] is False
     codigo, plan = llamar("POST", "/api/plan", {"fecha": "2099-01-01"})
-    assert codigo == 200 and len(plan["items"]) == 6
+    assert codigo == 200 and len(plan["items"]) == 7  # estado fijo + 6
     assert all(it["titulo"] for it in plan["items"])
-    ids = [it["id"] for it in plan["items"]]
+    ids = [it["id"] for it in plan["items"] if it["tipo"] != "fijo"]
     otro = next(i for i in CAT["producto"] if i not in ids)
     codigo, plan2 = llamar("PUT", "/api/plan", {"fecha": "2099-01-01", "ids": ids[:2] + [otro]})
-    assert codigo == 200 and [it["id"] for it in plan2["items"]] == ids[:2] + [otro]
+    assert codigo == 200 and [it["id"] for it in plan2["items"]] == ["fijo:publicitarios"] + ids[:2] + [otro]
     assert llamar("PUT", "/api/plan", {"fecha": "2099-01-01", "ids": ["producto:noexiste"]})[0] == 400
     assert json.loads((datos / "estado.json").read_text())["dias"]["2099-01-01"]["editado"] is True
 
@@ -215,6 +215,7 @@ def publicar_falso(tmp_path, monkeypatch):
     monkeypatch.setattr(publicar, "sync_playwright", lambda: _Nada())
     monkeypatch.setattr(publicar, "mantener_despierto", lambda: None)
     publicados = []
+    textos_enviados.clear()
 
     class Sesion:
         detener_en_2 = False
@@ -235,7 +236,10 @@ def publicar_falso(tmp_path, monkeypatch):
             pass
 
         def publicar_imagen(self, ruta, texto, enviar=True):
+            if "publicitarios" in str(ruta):
+                assert Path(ruta).exists()
             publicados.append(self.cuenta)
+            textos_enviados.append(texto)
             if len(publicados) == 2 and self.detener_en_2:
                 util.DETENER.write_text("x")
 
@@ -248,16 +252,21 @@ def publicar_falso(tmp_path, monkeypatch):
     return correr, datos, publicados, Sesion
 
 
+textos_enviados = []
+
+
 def test_publicar_respeta_pausa_y_registra_historial(publicar_falso):
     correr, datos, publicados, _ = publicar_falso
     util.escribir_json(util.CONTROL, {"pausado": True, "hasta": None})
     assert correr() == 0 and publicados == []  # programada + pausa: no publica
     assert correr("--ignorar-pausa", "--cuenta", "personal") == 0  # botón "Ejecutar ahora"
-    assert len(publicados) == 6  # 3 servicios + 3 productos (la promo está simulada fuera)
+    assert len(publicados) == 7  # estado fijo + 3 servicios + 3 productos (la promo está simulada fuera)
     info = json.loads((datos / "ejecucion.json").read_text())
-    assert info["estado"] == "ok" and info["publicados"] == 6
+    assert info["estado"] == "ok" and info["publicados"] == 7
     filas = [json.loads(x) for x in (datos / "historial.jsonl").read_text().splitlines()]
-    assert len(filas) == 6 and {f["cuenta"] for f in filas} == {"personal"}
+    assert len(filas) == 7 and {f["cuenta"] for f in filas} == {"personal"}
+    assert filas[0]["id"] == "fijo:publicitarios"  # va primero cuando no hay promo
+    assert textos_enviados[0].endswith("https://customania.com.co/publicitarios/")
 
 
 def test_publicar_se_detiene_desde_la_app(publicar_falso):
@@ -268,3 +277,56 @@ def test_publicar_se_detiene_desde_la_app(publicar_falso):
     info = json.loads((datos / "ejecucion.json").read_text())
     assert info["estado"] == "detenida" and info["publicados"] == 2
     assert not (datos / "detener.flag").exists()
+
+
+# ---------------------------------------------------------------- estados fijos
+import fijos  # noqa: E402
+
+FIJO = {"id": "publicitarios", "titulo": "Publicitarios", "imagen": "fijos/articulos-publicitarios.jpg",
+        "url": "https://x/publicitarios/", "texto": "PUBLI\n{url}"}
+
+
+def test_fijo_va_despues_de_la_promo_y_se_quita_si_se_desactiva():
+    dia = {"orden": ["promo:mugs", "servicio:a", "producto:1"], "items": {}, "publicado": {}}
+    fijos.agregar(dia, {"fijos": [FIJO]})
+    assert dia["orden"] == ["promo:mugs", "fijo:publicitarios", "servicio:a", "producto:1"]
+    fijos.agregar(dia, {"fijos": [FIJO]})  # idempotente
+    assert dia["orden"].count("fijo:publicitarios") == 1
+    fijos.agregar(dia, {"fijos": [{**FIJO, "activo": False}]})
+    assert "fijo:publicitarios" not in dia["orden"]
+    assert fijos.ruta(FIJO).exists()
+
+
+def test_fijo_usa_su_propio_texto():
+    import textos
+
+    it = fijos.item(FIJO)
+    assert textos.caption(it, {}, {"textos": {}}) == "PUBLI\nhttps://x/publicitarios/"
+
+
+def test_cambiar_plan_conserva_fijo_y_promo():
+    estado = {}
+    dia = rotacion.plan_del_dia(estado, "2026-11-07", CAT, {"servicios_por_dia": 1, "productos_por_dia": 1}, random.Random(5))
+    dia["orden"] = ["promo:x", "fijo:publicitarios"] + dia["orden"]
+    normales = dia["orden"][2:]
+    rotacion.cambiar_plan(estado, "2026-11-07", list(reversed(normales)))
+    assert dia["orden"] == ["promo:x", "fijo:publicitarios"] + list(reversed(normales))
+
+
+def test_api_fijos(api):
+    llamar, datos = api
+    _, aj = llamar("GET", "/api/ajustes")
+    assert aj["fijos"][0]["id"] == "publicitarios" and aj["fijos"][0]["activo"] is True
+    codigo, aj = llamar("PUT", "/api/ajustes", {"cambios": {"fijos": {"publicitarios": {"activo": False, "texto": "Hola {url}"}}}})
+    assert codigo == 200 and aj["fijos"][0]["activo"] is False and aj["fijos"][0]["texto"] == "Hola {url}"
+    assert llamar("PUT", "/api/ajustes", {"cambios": {"fijos": {"noexiste": {"activo": True}}}})[0] == 400
+    _, plan = llamar("POST", "/api/plan", {"fecha": "2099-02-01"})
+    assert all(not i["id"].startswith("fijo:") for i in plan["items"])  # desactivado: no sale
+    llamar("PUT", "/api/ajustes", {"cambios": {"fijos": {"publicitarios": {"activo": True}}}})
+    _, plan = llamar("GET", "/api/plan?fecha=2099-02-01")
+    assert plan["items"][0]["id"] == "fijo:publicitarios" and plan["items"][0]["tipo"] == "fijo"
+
+
+def test_api_imagen_fija(api):
+    llamar, _ = api
+    assert llamar("GET", "/api/fijo?id=noexiste")[0] == 404

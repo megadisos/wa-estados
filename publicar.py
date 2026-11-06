@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publica los Estados del día (promo de la semana + 3 servicios + 3 productos) en cada cuenta de WhatsApp.
+"""Publica los Estados del día (promo de la semana + estados fijos + 3 servicios + 3 productos) en cada cuenta de WhatsApp.
 
 Uso normal (lo llama el timer de systemd, una vez al día):
     xvfb-run -a .venv/bin/python publicar.py
@@ -23,11 +23,13 @@ from zoneinfo import ZoneInfo
 from playwright.sync_api import sync_playwright
 
 import catalogo
+import fijos
 import promo
 import rotacion
 import textos
 from tarjeta import crear_tarjeta
 from util import (
+    BASE,
     DATOS,
     DETENER,
     EJECUCION,
@@ -93,6 +95,7 @@ def preparar_dia(estado, fecha, cfg, sufijo=""):
         cat = catalogo.listar(cfg)
         dia = rotacion.plan_del_dia(estado, fecha, cat, cfg)
     agregar_promo(dia, cfg)
+    fijos.agregar(dia, cfg)
     items = []
     for n, id_ in list(enumerate(dia["orden"], 1)):
         try:
@@ -104,6 +107,12 @@ def preparar_dia(estado, fecha, cfg, sufijo=""):
                     raise RuntimeError("ya no existe en el sitio")
                 item = catalogo.detalle(ref, cfg)
                 dia["items"][id_] = item
+            if item.get("archivo"):  # estado fijo: se publica su propia imagen tal cual
+                ruta = BASE / item["archivo"]
+                if not ruta.exists():
+                    raise RuntimeError(f"no encuentro la imagen {item['archivo']}")
+                items.append({**item, "ruta": ruta})
+                continue
             slug = "".join(c if c.isalnum() else "-" for c in id_.split(":", 1)[1])[:40]
             ruta = DATOS / f"tarjetas{sufijo}" / fecha / f"{n}_{item['tipo']}_{slug}_v2.jpg"
             if not ruta.exists():
