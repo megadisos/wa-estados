@@ -245,8 +245,8 @@ class _PantallaPlanState extends State<PantallaPlan> {
     final it = _items[i];
     final cs = Theme.of(context).colorScheme;
     final pub = Map<String, dynamic>.from(it['publicado'] ?? {});
-    final esPromo = it['tipo'] == 'promo';
-    final bloqueado = pasado || esPromo || _publicado(it);
+    final automatico = it['tipo'] == 'promo' || it['tipo'] == 'fijo';
+    final bloqueado = pasado || automatico || _publicado(it);
     return ListTile(
       key: ValueKey(it['id']),
       leading: Miniatura(it['imagen']?.toString() ?? '', tipo: it['tipo']?.toString() ?? ''),

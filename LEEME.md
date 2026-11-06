@@ -1,8 +1,8 @@
 # Estados automáticos de WhatsApp – Customania (PC de casa con Windows)
 
-Publica cada día a las 5:00 a.m., en tus dos cuentas (customania y personal), 7 estados:
-la PROMO DE LA SEMANA de customania.com.co/promos + 3 servicios de customania.com.co/servicios
-+ 3 productos de la tienda (sin medallas ni trofeos).
+Publica cada día a las 5:00 a.m., en tus dos cuentas (customania y personal), 8 estados:
+la PROMO DE LA SEMANA de customania.com.co/promos + el estado fijo de ARTÍCULOS PUBLICITARIOS
++ 3 servicios de customania.com.co/servicios + 3 productos de la tienda (sin medallas ni trofeos).
 Cada día son distintos y no se repiten hasta recorrer todo el catálogo; luego empieza otra vuelta mezclada.
 
 ## Instalación en Windows (una vez)
@@ -45,6 +45,13 @@ Desactiva el script anterior de Selenium (o los dos publicarían a la vez y sald
 En cada celular, entra a WhatsApp > Dispositivos vinculados y cierra la sesión del Selenium viejo: WhatsApp permite
 pocos dispositivos vinculados y así no acumulas sesiones. Como este programa usa su propio perfil de navegador, hay que
 escanear el QR una vez más; es esperado.
+
+## Estados fijos (todos los días)
+Además de la rotación, cada día sale el estado fijo de **Artículos publicitarios** (imagen en
+`fijos\articulos-publicitarios.jpg`, enlace https://customania.com.co/publicitarios/), justo después de la promo.
+Se configura en config.toml, en el bloque [[fijos]]: puedes cambiar la imagen (reemplaza el archivo), el texto, la
+posición ("primero", "despues_promo" o "ultimo") o agregar otro bloque [[fijos]] para un estado fijo nuevo.
+Desde la app: Ajustes > Estados fijos, para activarlo/desactivarlo o cambiarle el texto.
 
 ## Promo de la semana
 Cada día el programa abre customania.com.co/promos (sin ventana), mira cuál es "la de esta semana", entra a su página

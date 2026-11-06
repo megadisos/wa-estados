@@ -53,7 +53,11 @@ def escribir_json(ruta, datos):
 def aplicar_ajustes(cfg, ajustes):
     """Mezcla los ajustes guardados por la app encima de config.toml (config.toml no se modifica)."""
     for clave, valor in (ajustes or {}).items():
-        if clave == "cuentas_activas":
+        if clave == "fijos":  # {id: {"activo": bool, "texto": str, "posicion": str}}
+            for f in cfg.get("fijos", []):
+                if f.get("id") in valor:
+                    f.update(valor[f["id"]])
+        elif clave == "cuentas_activas":
             for c in cfg.get("cuentas", []):
                 if c["nombre"] in valor:
                     c["activa"] = bool(valor[c["nombre"]])

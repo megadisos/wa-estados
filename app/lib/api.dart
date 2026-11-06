@@ -19,6 +19,14 @@ class Api {
   final String base;
   final String clave;
 
+  /// La conexión en uso (para cargar imágenes que sirve el agente, como las de los estados fijos).
+  static Api? actual;
+
+  /// Para una ruta del agente ("/api/fijo?id=...") devuelve la URL completa; una URL normal queda igual.
+  String urlCompleta(String url) => url.startsWith('/') ? '$base$url' : url;
+
+  Map<String, String> get cabeceras => {'Authorization': 'Bearer $clave'};
+
   static const _kBase = 'base';
   static const _kClave = 'clave';
 

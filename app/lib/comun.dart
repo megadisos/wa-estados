@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'api.dart';
+
 void avisar(BuildContext context, Object mensaje, {bool error = false}) {
   final m = ScaffoldMessenger.of(context);
   m.hideCurrentSnackBar();
@@ -47,20 +49,27 @@ class Miniatura extends StatelessWidget {
       height: tam,
       color: cs.surfaceContainerHighest,
       child: Icon(
-        tipo == 'servicio'
-            ? Icons.design_services_outlined
-            : tipo == 'promo'
-                ? Icons.local_offer_outlined
-                : Icons.shopping_bag_outlined,
+        switch (tipo) {
+          'servicio' => Icons.design_services_outlined,
+          'promo' => Icons.local_offer_outlined,
+          'fijo' => Icons.push_pin_outlined,
+          _ => Icons.shopping_bag_outlined,
+        },
         color: cs.onSurfaceVariant,
       ),
     );
+    final api = Api.actual;
+    final delAgente = url.startsWith('/');
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: url.isEmpty
+      child: url.isEmpty || (delAgente && api == null)
           ? icono
-          : Image.network(url,
-              width: tam, height: tam, fit: BoxFit.cover, errorBuilder: (_, _, _) => icono),
+          : Image.network(delAgente ? api!.urlCompleta(url) : url,
+              headers: delAgente ? api!.cabeceras : null,
+              width: tam,
+              height: tam,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => icono),
     );
   }
 }
@@ -69,6 +78,7 @@ String etiquetaTipo(String tipo) => switch (tipo) {
       'servicio' => 'Servicio',
       'producto' => 'Producto',
       'promo' => 'Promo de la semana',
+      'fijo' => 'Estado fijo (todos los días)',
       _ => tipo,
     };
 
