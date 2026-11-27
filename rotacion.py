@@ -16,6 +16,7 @@ except ImportError:  # Windows
 
 ARCHIVO = DATOS / "estado.json"
 DIAS_A_GUARDAR = 14
+PROPIO = "propio:"  # estados personalizados subidos desde la app (ver personalizados.py)
 
 
 def cargar():
@@ -167,6 +168,8 @@ def cambiar_plan(estado, fecha, nuevo_orden):
     - Los que se agregan cuentan como usados en esta vuelta (no se repiten hasta la siguiente).
     - La promo de la semana y los estados fijos no se tocan (se ponen solos el día de la publicación).
     - No se puede quitar algo que ya se publicó en alguna cuenta.
+    - Los estados personalizados ("propio:") se mueven o quitan como los demás, pero no son parte de la
+      rotación; solo se pueden dejar los que ya existen en el plan (se crean con personalizados.agregar).
     """
     dia = estado["dias"][fecha]
     auto = ("promo:", "fijo:")  # promo de la semana y estados fijos: no se eligen a mano
@@ -178,8 +181,14 @@ def cambiar_plan(estado, fecha, nuevo_orden):
     if bloqueados:
         raise ValueError(f"Ya se publicaron y no se pueden quitar: {', '.join(bloqueados)}")
     agregados = [i for i in nuevo if i not in viejo]
+    desconocidos = [i for i in agregados if i.startswith(PROPIO)]
+    if desconocidos:
+        raise ValueError(f"Ese estado personalizado ya no está en el plan: {', '.join(desconocidos)}")
     ciclos = estado.setdefault("ciclos", {})
     for i in reversed(quitados):
+        if i.startswith(PROPIO):  # no es de la rotación: solo sale del plan (su imagen se borra luego)
+            dia["items"].pop(i, None)
+            continue
         c = ciclos.setdefault(i.split(":")[0], {"pendientes": [], "usados": [], "vueltas": 0})
         if i in c["usados"]:
             c["usados"].remove(i)

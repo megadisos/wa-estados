@@ -2,8 +2,8 @@
 """Agente para controlar los Estados de WhatsApp desde la app del celular.
 
 Corre en el mismo PC que publicar.py y expone una API HTTP pequeña, protegida con una clave:
-estado, ejecutar ahora, detener, pausar la programación, ver y cambiar el plan de la próxima ejecución,
-catálogo, categorías, historial, log en vivo y ajustes.
+estado, ejecutar ahora, detener, pausar la programación, ver y cambiar el plan de la próxima ejecución
+(incluidos estados personalizados con imagen y texto propios), catálogo, categorías, historial, log en vivo y ajustes.
 
 Uso:
     .venv\\Scripts\\python agente.py            (Windows; activar_agente.bat lo deja corriendo al iniciar sesión)
@@ -14,6 +14,8 @@ La clave se crea sola la primera vez en datos/agente_clave.txt. Se escribe en la
 del PC (con Tailscale: http://<IP de Tailscale del PC>:8770).
 """
 import argparse
+import base64
+import binascii
 import copy
 import hmac
 import json
@@ -33,6 +35,7 @@ from zoneinfo import ZoneInfo
 
 import catalogo
 import fijos
+import personalizados
 import rotacion
 from util import (
     AJUSTES_APP,
@@ -49,7 +52,8 @@ from util import (
     pausa_activa,
 )
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
+MAX_CUERPO = 25_000_000  # bytes; alcanza para una foto en base64
 PUERTO = 8770
 ARCHIVO_CLAVE = DATOS / "agente_clave.txt"
 LOG_ESTADOS = DATOS / "logs" / "estados.log"
@@ -334,6 +338,7 @@ class Agente:
                 "precio": it.get("precio", ""),
                 "imagen": it.get("imagen", ""),
                 "url": it.get("url", ""),
+                "texto": it.get("texto", "") if personalizados.es(id_) else "",
                 "nuevo": id_ in dia.get("nuevos", []),
                 "publicado": {c: v for c, v in estados.items() if v},
             })
@@ -378,7 +383,7 @@ class Agente:
         cfg = cargar_config()
         cat = self.catalogo()
         validos = set(cat["servicio"]) | set(cat["producto"])
-        malos = [i for i in ids if not i.startswith(fijos.AUTOMATICOS) and i not in validos]
+        malos = [i for i in ids if not i.startswith(fijos.AUTOMATICOS) and not personalizados.es(i) and i not in validos]
         if malos:
             raise ErrorApi(f"No están en el catálogo (o están excluidos): {', '.join(malos)}")
         if not [i for i in ids if not i.startswith(fijos.AUTOMATICOS)]:
@@ -392,8 +397,49 @@ class Agente:
             except ValueError as e:
                 raise ErrorApi(str(e), 409) from e
             rotacion.guardar(est)
+            personalizados.limpiar(est)
         log.info("Plan de %s cambiado desde la app: %s", fecha, ", ".join(dia["orden"]))
         return self._resumen_plan(dia, fecha, cfg, cat)
+
+    # ------------------------------------------------------------ estados personalizados
+    def agregar_personalizado(self, fecha, imagen_b64, texto):
+        """Sube una imagen propia con su texto y la agrega al final del plan de `fecha` (lo crea si no existe)."""
+        if not imagen_b64 or not isinstance(imagen_b64, str):
+            raise ErrorApi("Falta la imagen")
+        try:
+            datos = base64.b64decode(imagen_b64.split(",", 1)[-1], validate=True)
+        except (binascii.Error, ValueError) as e:
+            raise ErrorApi("La imagen llegó dañada; inténtalo de nuevo") from e
+        cfg = cargar_config()
+        fecha = fecha or self.fecha_proxima(cfg)
+        datetime.strptime(fecha, "%Y-%m-%d")
+        if fecha < _ahora(cfg).strftime("%Y-%m-%d"):
+            raise ErrorApi("Ese día ya pasó")
+        if not rotacion.cargar().get("dias", {}).get(fecha):
+            self.plan(fecha, generar=True)
+        with self._bloqueo():
+            est = rotacion.cargar()
+            dia = est["dias"][fecha]
+            id_ = personalizados.agregar(dia, datos, texto)
+            rotacion.guardar(est)
+            personalizados.limpiar(est)
+        log.info("Estado personalizado %s agregado al plan de %s desde la app", id_, fecha)
+        return self.plan(fecha)
+
+    def cambiar_personalizado(self, fecha, id_, texto):
+        with self._bloqueo():
+            est = rotacion.cargar()
+            dia = est.get("dias", {}).get(fecha)
+            if not dia:
+                raise ErrorApi("Ese día no tiene plan", 404)
+            try:
+                personalizados.cambiar_texto(dia, id_, texto)
+            except KeyError as e:
+                raise ErrorApi("Ese estado personalizado ya no está en el plan", 404) from e
+            except ValueError as e:
+                raise ErrorApi(str(e), 409) from e
+            rotacion.guardar(est)
+        return self.plan(fecha)
 
     def resolver_incierto(self, fecha, cuenta, id_, accion):
         if accion not in ("ok", "reintentar"):
@@ -577,10 +623,26 @@ def crear_manejador(agente, clave_api):
             self.end_headers()
             self.wfile.write(datos)
 
+        def _imagen_propia(self, id_):
+            it = personalizados.buscar(rotacion.cargar(), id_)
+            archivo = personalizados.ruta(it) if it else None
+            if not archivo or not archivo.is_file():
+                return self._responder(404, {"error": "No existe esa imagen"})
+            datos = archivo.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(datos)))
+            self.send_header("Cache-Control", "max-age=86400")
+            self.end_headers()
+            self.wfile.write(datos)
+
         def _cuerpo(self):
             n = int(self.headers.get("Content-Length") or 0)
             if not n:
                 return {}
+            if n > MAX_CUERPO:
+                self.close_connection = True
+                raise ErrorApi("La imagen es muy pesada (máximo unos 18 MB)", 413)
             try:
                 return json.loads(self.rfile.read(n).decode("utf-8"))
             except ValueError as e:
@@ -602,6 +664,8 @@ def crear_manejador(agente, clave_api):
                     return self._responder(401, {"error": "Clave incorrecta"})
                 if metodo == "GET" and ruta == "/api/fijo":
                     return self._imagen_fija(q.get("id", ""))
+                if metodo == "GET" and ruta == "/api/propio":
+                    return self._imagen_propia(q.get("id", ""))
                 b = self._cuerpo() if metodo in ("POST", "PUT") else {}
                 rutas = {
                     ("GET", "/api/estado"): lambda: agente.estado(),
@@ -616,6 +680,9 @@ def crear_manejador(agente, clave_api):
                     ("GET", "/api/plan"): lambda: agente.plan(q.get("fecha")),
                     ("POST", "/api/plan"): lambda: agente.plan(b.get("fecha"), generar=True),
                     ("PUT", "/api/plan"): lambda: agente.cambiar_plan(b["fecha"], b.get("ids")),
+                    ("POST", "/api/personalizado"): lambda: agente.agregar_personalizado(
+                        b.get("fecha"), b.get("imagen"), b.get("texto", "")),
+                    ("PUT", "/api/personalizado"): lambda: agente.cambiar_personalizado(b["fecha"], b["id"], b.get("texto", "")),
                     ("POST", "/api/incierto"): lambda: agente.resolver_incierto(b["fecha"], b["cuenta"], b["id"], b.get("accion")),
                     ("GET", "/api/catalogo"): lambda: agente.catalogo_api(q.get("refrescar") == "1"),
                     ("GET", "/api/categorias"): lambda: agente.categorias(q.get("refrescar") == "1"),

@@ -1,6 +1,7 @@
 import 'package:estados_control/api.dart';
 import 'package:estados_control/comun.dart';
 import 'package:estados_control/pantallas/conexion.dart';
+import 'package:estados_control/pantallas/plan.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -24,5 +25,17 @@ void main() {
     await tester.tap(find.text('Conectar'));
     await tester.pump();
     expect(find.text('Escribe la dirección y la clave'), findsOneWidget);
+  });
+
+  testWidgets('el estado personalizado pide imagen antes de agregarlo', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: PantallaPersonalizado(fecha: '2026-11-28')));
+    expect(find.text('Toca para elegir una imagen'), findsOneWidget);
+    expect(find.text('Texto del estado'), findsOneWidget);
+    final boton = tester.widget<ButtonStyleButton>(
+        find.ancestor(of: find.text('Agregar al plan'), matching: find.bySubtype<ButtonStyleButton>()));
+    expect(boton.onPressed, isNull);
+    expect(etiquetaTipo('personalizado'), 'Estado personalizado');
   });
 }

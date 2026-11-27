@@ -53,6 +53,7 @@ class Miniatura extends StatelessWidget {
           'servicio' => Icons.design_services_outlined,
           'promo' => Icons.local_offer_outlined,
           'fijo' => Icons.push_pin_outlined,
+          'personalizado' => Icons.add_photo_alternate_outlined,
           _ => Icons.shopping_bag_outlined,
         },
         color: cs.onSurfaceVariant,
@@ -79,6 +80,7 @@ String etiquetaTipo(String tipo) => switch (tipo) {
       'producto' => 'Producto',
       'promo' => 'Promo de la semana',
       'fijo' => 'Estado fijo (todos los días)',
+      'personalizado' => 'Estado personalizado',
       _ => tipo,
     };
 
