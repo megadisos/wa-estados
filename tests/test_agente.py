@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import agente  # noqa: E402
 import catalogo  # noqa: E402
+import personalizados  # noqa: E402
 import rotacion  # noqa: E402
 import util  # noqa: E402
 
@@ -103,6 +104,7 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setattr(agente, "LOG_SALIDA", datos / "logs" / "ultima_ejecucion.txt")
     monkeypatch.setattr(rotacion, "DATOS", datos)
     monkeypatch.setattr(rotacion, "ARCHIVO", datos / "estado.json")
+    monkeypatch.setattr(personalizados, "CARPETA", datos / "personalizados")
     monkeypatch.setattr(agente.catalogo, "listar", lambda cfg: json.loads(json.dumps(CAT)))
     ag = agente.Agente()
     srv = ThreadingHTTPServer(("127.0.0.1", 0), agente.crear_manejador(ag, "secreta"))
@@ -119,6 +121,7 @@ def api(tmp_path, monkeypatch):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read())
 
+    llamar.base = base
     yield llamar, datos
     srv.shutdown()
 
@@ -208,6 +211,7 @@ def publicar_falso(tmp_path, monkeypatch):
     monkeypatch.setattr(publicar, "DATOS", datos)
     monkeypatch.setattr(rotacion, "DATOS", datos)
     monkeypatch.setattr(rotacion, "ARCHIVO", datos / "estado.json")
+    monkeypatch.setattr(personalizados, "CARPETA", datos / "personalizados")
     monkeypatch.setattr(publicar.catalogo, "listar", lambda cfg: json.loads(json.dumps(CAT)))
     monkeypatch.setattr(publicar.catalogo, "detalle", lambda ref, cfg: {"id": ref["id"], "tipo": ref["tipo"], "titulo": ref["id"], "url": "u"})
     monkeypatch.setattr(publicar, "crear_tarjeta", lambda item, ruta: None)
@@ -216,6 +220,7 @@ def publicar_falso(tmp_path, monkeypatch):
     monkeypatch.setattr(publicar, "mantener_despierto", lambda: None)
     publicados = []
     textos_enviados.clear()
+    rutas_enviadas.clear()
 
     class Sesion:
         detener_en_2 = False
@@ -236,6 +241,7 @@ def publicar_falso(tmp_path, monkeypatch):
             pass
 
         def publicar_imagen(self, ruta, texto, enviar=True):
+            rutas_enviadas.append(Path(ruta))
             if "publicitarios" in str(ruta):
                 assert Path(ruta).exists()
             publicados.append(self.cuenta)
@@ -253,6 +259,7 @@ def publicar_falso(tmp_path, monkeypatch):
 
 
 textos_enviados = []
+rutas_enviadas = []
 
 
 def test_publicar_respeta_pausa_y_registra_historial(publicar_falso):
@@ -330,3 +337,84 @@ def test_api_fijos(api):
 def test_api_imagen_fija(api):
     llamar, _ = api
     assert llamar("GET", "/api/fijo?id=noexiste")[0] == 404
+
+
+# ---------------------------------------------------------------- estados personalizados
+def _foto(formato="PNG", modo="RGBA"):
+    import base64
+    import io
+
+    from PIL import Image
+
+    b = io.BytesIO()
+    Image.new(modo, (40, 30), (255, 0, 0, 128) if modo == "RGBA" else (255, 0, 0)).save(b, formato)
+    return base64.b64encode(b.getvalue()).decode()
+
+
+def test_api_estado_personalizado(api):
+    llamar, datos = api
+    # sin plan todavía: lo crea y agrega el personalizado al final
+    codigo, plan = llamar("POST", "/api/personalizado", {"fecha": "2099-03-01", "imagen": _foto(), "texto": "Hoy 2x1 {ojo}\nEscríbenos"})
+    assert codigo == 200, plan
+    propio = plan["items"][-1]
+    assert propio["id"].startswith("propio:") and propio["tipo"] == "personalizado"
+    assert propio["titulo"] == "Hoy 2x1 {ojo}" and propio["texto"] == "Hoy 2x1 {ojo}\nEscríbenos"
+    fotos = list((datos / "personalizados").iterdir())
+    assert len(fotos) == 1 and fotos[0].suffix == ".jpg"
+
+    assert llamar("GET", "/api/propio?id=propio:noexiste")[0] == 404
+
+    # se puede mover como los demás, y cambiarle el texto
+    ids = [i["id"] for i in plan["items"] if i["tipo"] != "fijo"]
+    codigo, plan = llamar("PUT", "/api/plan", {"fecha": "2099-03-01", "ids": [ids[-1]] + ids[:-1]})
+    assert codigo == 200 and plan["items"][1]["id"] == propio["id"]
+    codigo, plan = llamar("PUT", "/api/personalizado", {"fecha": "2099-03-01", "id": propio["id"], "texto": "Otro texto"})
+    assert codigo == 200 and plan["items"][1]["texto"] == "Otro texto" and plan["items"][1]["titulo"] == "Otro texto"
+
+    # un id personalizado inventado no se acepta
+    assert llamar("PUT", "/api/plan", {"fecha": "2099-03-01", "ids": ids + ["propio:inventado"]})[0] == 409
+
+    # al quitarlo del plan se borra su imagen
+    codigo, plan = llamar("PUT", "/api/plan", {"fecha": "2099-03-01", "ids": ids[:-1]})
+    assert codigo == 200 and all(i["tipo"] != "personalizado" for i in plan["items"])
+    assert list((datos / "personalizados").iterdir()) == []
+
+
+def test_api_personalizado_valida(api):
+    llamar, _ = api
+    assert llamar("POST", "/api/personalizado", {"fecha": "2099-03-02", "texto": "x"})[0] == 400
+    assert llamar("POST", "/api/personalizado", {"fecha": "2099-03-02", "imagen": "bm8gZXMgaW1hZ2Vu", "texto": "x"})[0] == 400
+    assert llamar("POST", "/api/personalizado", {"fecha": "2000-01-01", "imagen": _foto(), "texto": "x"})[0] == 400
+    assert llamar("POST", "/api/personalizado", {"fecha": "2099-03-02", "imagen": _foto(), "texto": "x" * 5000})[0] == 400
+
+
+def test_api_sirve_imagen_personalizada(api):
+    llamar, _ = api
+    _, plan = llamar("POST", "/api/personalizado", {"fecha": "2099-03-03", "imagen": _foto("JPEG", "RGB"), "texto": ""})
+    propio = plan["items"][-1]
+    assert propio["titulo"] == "Estado personalizado"
+    req = urllib.request.Request(llamar.base + propio["imagen"], headers={"Authorization": "Bearer secreta"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        assert r.headers["Content-Type"] == "image/jpeg" and r.read()[:2] == b"\xff\xd8"
+    sin_clave = urllib.request.Request(llamar.base + propio["imagen"])
+    with pytest.raises(urllib.error.HTTPError):
+        urllib.request.urlopen(sin_clave, timeout=10)
+
+
+def test_publicar_incluye_personalizado_con_su_texto(publicar_falso):
+    correr, datos, publicados, _ = publicar_falso
+    import base64
+
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    hoy = datetime.now(ZoneInfo("America/Bogota")).strftime("%Y-%m-%d")
+    est = {}
+    dia = rotacion.plan_del_dia(est, hoy, CAT, {"servicios_por_dia": 1, "productos_por_dia": 1}, random.Random(3))
+    id_ = personalizados.agregar(dia, base64.b64decode(_foto()), "Mensaje {libre}\nhttps://wa.me/57")
+    rotacion.guardar(est)
+    assert correr("--cuenta", "personal") == 0
+    assert textos_enviados[-1] == "Mensaje {libre}\nhttps://wa.me/57"
+    assert rutas_enviadas[-1] == personalizados.ruta(dia["items"][id_]) and rutas_enviadas[-1].exists()
+    filas = [json.loads(x) for x in (datos / "historial.jsonl").read_text().splitlines()]
+    assert filas[-1]["id"] == id_ and filas[-1]["tipo"] == "personalizado"

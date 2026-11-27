@@ -1,9 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../api.dart';
 import '../comun.dart';
 
-/// Próxima ejecución: qué servicios y productos salen, con opción de cambiarlos, quitarlos u ordenarlos.
+/// Próxima ejecución: qué servicios y productos salen, con opción de cambiarlos, quitarlos u ordenarlos,
+/// y de sumar estados personalizados (imagen y texto propios que no son de la página).
 class PantallaPlan extends StatefulWidget {
   const PantallaPlan({super.key, required this.api});
 
@@ -74,6 +78,76 @@ class _PantallaPlanState extends State<PantallaPlan> {
         });
         avisar(context, 'Plan guardado');
       });
+
+  void _mostrarPlan(Map<String, dynamic> p) {
+    _plan = p;
+    _items = [for (final i in (p['items'] as List? ?? [])) Map<String, dynamic>.from(i)];
+    _cambios = false;
+  }
+
+  Future<void> _agregarPersonalizado() async {
+    final nuevo = await Navigator.push<_Personalizado>(
+      context,
+      MaterialPageRoute(builder: (_) => PantallaPersonalizado(fecha: _plan!['fecha'].toString())),
+    );
+    if (nuevo == null) return;
+    await _ocupar(() async {
+      if (_cambios) {
+        // primero se guardan los cambios pendientes, para no perderlos al recibir el plan nuevo
+        final guardado = await widget.api.cambiarPlan(_plan!['fecha'], [for (final i in _items) i['id'].toString()]);
+        if (mounted) setState(() => _mostrarPlan(guardado));
+      }
+      final p = await widget.api.agregarPersonalizado(_plan!['fecha'], nuevo.imagen, nuevo.texto);
+      if (!mounted) return;
+      setState(() => _mostrarPlan(p));
+      avisar(context, 'Estado personalizado agregado al final del plan. Puedes moverlo arrastrándolo.');
+    });
+  }
+
+  Future<void> _editarTexto(Map<String, dynamic> it) async {
+    final texto = await editarTextoPersonalizado(context, it['texto']?.toString() ?? '');
+    if (texto == null) return;
+    await _ocupar(() async {
+      if (_cambios) {
+        final guardado = await widget.api.cambiarPlan(_plan!['fecha'], [for (final i in _items) i['id'].toString()]);
+        if (mounted) setState(() => _mostrarPlan(guardado));
+      }
+      final p = await widget.api.cambiarTextoPersonalizado(_plan!['fecha'], it['id'].toString(), texto);
+      if (!mounted) return;
+      setState(() => _mostrarPlan(p));
+      avisar(context, 'Texto actualizado');
+    });
+  }
+
+  void _verPersonalizado(Map<String, dynamic> it) {
+    final api = Api.actual;
+    final url = it['imagen']?.toString() ?? '';
+    final texto = it['texto']?.toString() ?? '';
+    showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        contentPadding: const EdgeInsets.all(12),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (api != null && url.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(api.urlCompleta(url),
+                    headers: api.cabeceras,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Icon(Icons.broken_image_outlined, size: 48),
+                        )),
+              ),
+            const SizedBox(height: 12),
+            Text(texto.isEmpty ? '(sin texto)' : texto),
+          ]),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cerrar'))],
+      ),
+    );
+  }
 
   Future<void> _elegirFecha() async {
     final hoy = DateTime.now();
@@ -199,6 +273,14 @@ class _PantallaPlanState extends State<PantallaPlan> {
             label: const Text('Crear plan ahora'),
           ),
         ),
+        const SizedBox(height: 12),
+        Center(
+          child: OutlinedButton.icon(
+            onPressed: _ocupado ? null : _agregarPersonalizado,
+            icon: const Icon(Icons.add_photo_alternate_outlined),
+            label: const Text('Agregar estado personalizado'),
+          ),
+        ),
       ]);
     }
     final pasado = (p['fecha'] as String).compareTo(isoFecha(DateTime.now())) < 0;
@@ -225,11 +307,20 @@ class _PantallaPlanState extends State<PantallaPlan> {
         ),
         if (!pasado)
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: OutlinedButton.icon(
               onPressed: _ocupado ? null : () => _agregar(),
               icon: const Icon(Icons.add),
               label: const Text('Agregar servicio o producto'),
+            ),
+          ),
+        if (!pasado)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: OutlinedButton.icon(
+              onPressed: _ocupado ? null : _agregarPersonalizado,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: const Text('Agregar estado personalizado (imagen y texto)'),
             ),
           ),
         if (p['editado'] == true)
@@ -246,13 +337,17 @@ class _PantallaPlanState extends State<PantallaPlan> {
     final cs = Theme.of(context).colorScheme;
     final pub = Map<String, dynamic>.from(it['publicado'] ?? {});
     final automatico = it['tipo'] == 'promo' || it['tipo'] == 'fijo';
+    final propio = it['tipo'] == 'personalizado';
     final bloqueado = pasado || automatico || _publicado(it);
+    final texto = (it['texto'] ?? '').toString().replaceAll('\n', ' ');
     return ListTile(
       key: ValueKey(it['id']),
+      onTap: propio ? () => _verPersonalizado(it) : null,
       leading: Miniatura(it['imagen']?.toString() ?? '', tipo: it['tipo']?.toString() ?? ''),
       title: Text(it['titulo']?.toString() ?? it['id'].toString(), maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Wrap(spacing: 6, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
         Text([etiquetaTipo(it['tipo']?.toString() ?? ''), if ((it['precio'] ?? '') != '') it['precio']].join(' · ')),
+        if (propio && texto.isNotEmpty) Text(texto, maxLines: 2, overflow: TextOverflow.ellipsis),
         if (it['nuevo'] == true) _chip('Nuevo', cs.tertiaryContainer, cs.onTertiaryContainer),
         for (final e in pub.entries)
           GestureDetector(
@@ -267,6 +362,7 @@ class _PantallaPlanState extends State<PantallaPlan> {
           : PopupMenuButton<String>(
               onSelected: (v) {
                 if (v == 'cambiar') _agregar(reemplazar: i);
+                if (v == 'texto') _editarTexto(it);
                 if (v == 'quitar') {
                   setState(() {
                     _items.removeAt(i);
@@ -274,9 +370,12 @@ class _PantallaPlanState extends State<PantallaPlan> {
                   });
                 }
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'cambiar', child: Text('Cambiar por otro')),
-                PopupMenuItem(value: 'quitar', child: Text('Quitar')),
+              itemBuilder: (_) => [
+                if (propio)
+                  const PopupMenuItem(value: 'texto', child: Text('Editar texto'))
+                else
+                  const PopupMenuItem(value: 'cambiar', child: Text('Cambiar por otro')),
+                const PopupMenuItem(value: 'quitar', child: Text('Quitar')),
               ],
             ),
     );
@@ -416,6 +515,146 @@ class _SelectorCatalogoState extends State<SelectorCatalogo> {
                         );
                       },
                     ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Lo que se va a subir como estado personalizado.
+class _Personalizado {
+  const _Personalizado(this.imagen, this.texto);
+
+  final Uint8List imagen;
+  final String texto;
+}
+
+Future<String?> editarTextoPersonalizado(BuildContext context, String actual) {
+  final ctl = TextEditingController(text: actual);
+  return showDialog<String>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('Texto del estado'),
+      content: TextField(
+        controller: ctl,
+        autofocus: true,
+        minLines: 3,
+        maxLines: 8,
+        maxLength: 1500,
+        decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'Lo que sale debajo de la imagen'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancelar')),
+        FilledButton(onPressed: () => Navigator.pop(c, ctl.text.trim()), child: const Text('Guardar')),
+      ],
+    ),
+  );
+}
+
+/// Sube una imagen del celular y escribe el texto de un estado que no es de la página.
+class PantallaPersonalizado extends StatefulWidget {
+  const PantallaPersonalizado({super.key, required this.fecha});
+
+  final String fecha;
+
+  @override
+  State<PantallaPersonalizado> createState() => _PantallaPersonalizadoState();
+}
+
+class _PantallaPersonalizadoState extends State<PantallaPersonalizado> {
+  final _texto = TextEditingController();
+  Uint8List? _imagen;
+  bool _cargando = false;
+
+  @override
+  void dispose() {
+    _texto.dispose();
+    super.dispose();
+  }
+
+  Future<void> _elegir(ImageSource origen) async {
+    setState(() => _cargando = true);
+    try {
+      final f = await ImagePicker().pickImage(source: origen, maxWidth: 2048, maxHeight: 2048, imageQuality: 88);
+      if (f == null) return;
+      final bytes = await f.readAsBytes();
+      if (mounted) setState(() => _imagen = bytes);
+    } catch (e) {
+      if (mounted) avisar(context, 'No se pudo abrir la imagen: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final img = _imagen;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Estado personalizado')),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Text('Se publica el ${fechaBonita(widget.fecha)} junto con los demás estados del plan, '
+            'con esta imagen tal cual y el texto que escribas.'),
+        const SizedBox(height: 16),
+        AspectRatio(
+          aspectRatio: 1,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: _cargando ? null : () => _elegir(ImageSource.gallery),
+            child: Container(
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _cargando
+                  ? const Cargando()
+                  : img == null
+                      ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(Icons.add_photo_alternate_outlined, size: 56, color: cs.onSurfaceVariant),
+                          const SizedBox(height: 8),
+                          const Text('Toca para elegir una imagen'),
+                        ])
+                      : Image.memory(img, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _cargando ? null : () => _elegir(ImageSource.gallery),
+              icon: const Icon(Icons.photo_library_outlined),
+              label: const Text('Galería'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _cargando ? null : () => _elegir(ImageSource.camera),
+              icon: const Icon(Icons.photo_camera_outlined),
+              label: const Text('Cámara'),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _texto,
+          minLines: 3,
+          maxLines: 8,
+          maxLength: 1500,
+          decoration: const InputDecoration(
+            labelText: 'Texto del estado',
+            hintText: 'Lo que sale debajo de la imagen (puede ir vacío)',
+            border: OutlineInputBorder(),
+            alignLabelWithHint: true,
+          ),
+        ),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          onPressed: img == null ? null : () => Navigator.pop(context, _Personalizado(img, _texto.text.trim())),
+          icon: const Icon(Icons.check),
+          label: const Text('Agregar al plan'),
         ),
       ]),
     );

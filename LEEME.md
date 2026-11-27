@@ -118,6 +118,11 @@ Notas:
 - "Detener" espera a que termine el estado que está subiendo; "Forzar" corta de inmediato (puede quedar uno a medias).
 - En "Próxima" puedes crear el plan del día siguiente por adelantado y cambiar, quitar, ordenar o agregar elementos.
   La promo de la semana no se elige: se detecta sola el día de la publicación.
+- En "Próxima" también puedes tocar "Agregar estado personalizado" para publicar algo que no está en la página:
+  eliges una imagen (galería o cámara), escribes el texto y sale ese día junto con los demás, con la imagen tal cual
+  y el texto exacto. Se puede mover, quitar o cambiarle el texto mientras no se haya publicado. Las imágenes quedan
+  en `datos\personalizados` y se borran solas cuando ya no las usa ningún plan guardado.
+  Requiere actualizar también el PC (git pull y reiniciar el agente), no solo la app.
 - Los ajustes hechos desde la app se guardan en `datos\ajustes_app.json` y se aplican encima de config.toml
   (que no se modifica). "Volver a config.toml" en Ajustes los borra.
 - Historial: `datos\historial.jsonl` (empieza a llenarse con esta versión).

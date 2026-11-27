@@ -131,6 +131,16 @@ class Api {
       Map<String, dynamic>.from(await _llamar('PUT', '/api/plan',
           cuerpo: {'fecha': fecha, 'ids': ids}, espera: const Duration(seconds: 90)));
 
+  /// Sube una imagen propia con su texto y la agrega al final del plan de [fecha] (el PC crea el plan si no existe).
+  Future<Map<String, dynamic>> agregarPersonalizado(String fecha, List<int> imagen, String texto) async =>
+      Map<String, dynamic>.from(await _llamar('POST', '/api/personalizado',
+          cuerpo: {'fecha': fecha, 'imagen': base64Encode(imagen), 'texto': texto},
+          espera: const Duration(seconds: 120)));
+
+  Future<Map<String, dynamic>> cambiarTextoPersonalizado(String fecha, String id, String texto) async =>
+      Map<String, dynamic>.from(await _llamar('PUT', '/api/personalizado',
+          cuerpo: {'fecha': fecha, 'id': id, 'texto': texto}));
+
   Future<void> resolverIncierto(String fecha, String cuenta, String id, String accion) async =>
       _llamar('POST', '/api/incierto',
           cuerpo: {'fecha': fecha, 'cuenta': cuenta, 'id': id, 'accion': accion});

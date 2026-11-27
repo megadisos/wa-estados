@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Publica los Estados del día (promo de la semana + estados fijos + 3 servicios + 3 productos) en cada cuenta de WhatsApp.
+"""Publica los Estados del día (promo de la semana + estados fijos + 3 servicios + 3 productos + los
+personalizados que se suban desde la app) en cada cuenta de WhatsApp.
 
 Uso normal (lo llama el timer de systemd, una vez al día):
     xvfb-run -a .venv/bin/python publicar.py
@@ -24,6 +25,7 @@ from playwright.sync_api import sync_playwright
 
 import catalogo
 import fijos
+import personalizados
 import promo
 import rotacion
 import textos
@@ -107,6 +109,12 @@ def preparar_dia(estado, fecha, cfg, sufijo=""):
                     raise RuntimeError("ya no existe en el sitio")
                 item = catalogo.detalle(ref, cfg)
                 dia["items"][id_] = item
+            if personalizados.es(id_):  # subido desde la app: su imagen tal cual
+                ruta = personalizados.ruta(item)
+                if not ruta.exists():
+                    raise RuntimeError("no encuentro la imagen que se subió desde la app")
+                items.append({**item, "ruta": ruta})
+                continue
             if item.get("archivo"):  # estado fijo: se publica su propia imagen tal cual
                 ruta = BASE / item["archivo"]
                 if not ruta.exists():
